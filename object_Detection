@@ -1,0 +1,99 @@
+#Done in Google Collab
+!pip install -q transformers
+from transformers import pipeline
+checkpoint = "google/owlv2-base-patch16-ensemble"
+detector = pipeline(model=checkpoint, task="zero-shot-object-detection")
+import skimage
+import numpy as np
+from PIL import Image
+
+image = skimage.data.astronaut()
+image = Image.fromarray(np.uint8(image)).convert("RGB")
+image
+predictions = detector(
+    image,
+    candidate_labels=["human face", "rocket", "nasa badge", "star-spangled banner"],
+)
+predictions
+from PIL import ImageDraw
+
+draw = ImageDraw.Draw(image)
+
+for prediction in predictions:
+    box = prediction["box"]
+    label = prediction["label"]
+    score = prediction["score"]
+
+    xmin, ymin, xmax, ymax = box.values()
+    draw.rectangle((xmin, ymin, xmax, ymax), outline="red", width=1)
+    draw.text((xmin, ymin), f"{label}: {round(score,2)}", fill="white")
+
+image
+from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
+
+model = AutoModelForZeroShotObjectDetection.from_pretrained(checkpoint)
+processor = AutoProcessor.from_pretrained(checkpoint)
+import requests
+from PIL import Image
+from google.colab import files
+uploaded = files.upload()
+
+for filename in uploaded.keys():
+    # Open and display the image
+    im = Image.open(filename)
+    im.show()
+
+text_queries = ["hat", "book", "sunglasses", "camera"]
+inputs = processor(text=text_queries, images=im, return_tensors="pt")
+import torch
+with torch.no_grad():
+    outputs = model(**inputs)
+    target_sizes = torch.tensor([im.size[::-1]])
+    results = processor.post_process_object_detection(outputs, threshold=0.1, target_sizes=target_sizes)[0]
+
+draw = ImageDraw.Draw(im)
+
+scores = results["scores"].tolist()
+labels = results["labels"].tolist()
+boxes = results["boxes"].tolist()
+
+for box, score, label in zip(boxes, scores, labels):
+    xmin, ymin, xmax, ymax = box
+    draw.rectangle((xmin, ymin, xmax, ymax), outline="red", width=1)
+    draw.text((xmin, ymin), f"{text_queries[label]}: {round(score,2)}", fill="white")
+
+im
+images = [image, im]
+text_queries = [
+    ["human face", "rocket", "nasa badge", "star-spangled banner"],
+    ["hat", "book", "sunglasses", "camera"],
+]
+inputs = processor(text=text_queries, images=images, return_tensors="pt")
+with torch.no_grad():
+    outputs = model(**inputs)
+    target_sizes = [x.size[::-1] for x in images]
+    results = processor.post_process_object_detection(outputs, threshold=0.1, target_sizes=target_sizes)
+
+image_idx = 1
+draw = ImageDraw.Draw(images[image_idx])
+
+scores = results[image_idx]["scores"].tolist()
+labels = results[image_idx]["labels"].tolist()
+boxes = results[image_idx]["boxes"].tolist()
+
+for box, score, label in zip(boxes, scores, labels):
+    xmin, ymin, xmax, ymax = box
+    draw.rectangle((xmin, ymin, xmax, ymax), outline="red", width=1)
+    draw.text((xmin, ymin), f"{text_queries[image_idx][label]}: {round(score,2)}", fill="white")
+
+images[image_idx]
+url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+image_target = Image.open(requests.get(url, stream=True).raw)
+
+query_url = "http://images.cocodataset.org/val2017/000000524280.jpg"
+query_image = Image.open(requests.get(query_url, stream=True).raw)
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(1, 2)
+ax[0].imshow(image_target)
+ax[1].imshow(query_image)
